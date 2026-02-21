@@ -1,4 +1,4 @@
-# NaijaLingo Backend API
+# LangGpt Backend API
 
 A language learning backend for Igbo, Yoruba, and Hausa — built with FastAPI and Google Gemini.
 
