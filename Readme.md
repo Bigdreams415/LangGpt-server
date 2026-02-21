@@ -96,6 +96,3 @@ POST /conversation/
   "conversation_history": []
 }
 ```
-
-## Notes
-# LangGpt-server
