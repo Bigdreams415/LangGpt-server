@@ -32,7 +32,7 @@ class LessonTopic(str, Enum):
     proverbs = "proverbs and culture"
 
 
-# ─── Lesson Models ────────────────────────────────────────────────────────────
+# Lesson models
 
 class LessonRequest(BaseModel):
     language: Language
@@ -56,7 +56,7 @@ class LessonResponse(BaseModel):
     tip: str
 
 
-# ─── Quiz Models ──────────────────────────────────────────────────────────────
+# Quiz models
 
 class QuizRequest(BaseModel):
     language: Language
@@ -76,7 +76,7 @@ class QuizResponse(BaseModel):
     questions: List[QuizQuestion]
 
 
-# ─── Answer Checking ──────────────────────────────────────────────────────────
+# Answer checking
 
 class CheckAnswerRequest(BaseModel):
     language: Language
@@ -90,7 +90,7 @@ class CheckAnswerResponse(BaseModel):
     encouragement: str
 
 
-# ─── Conversation Models ──────────────────────────────────────────────────────
+# Conversation models
 
 class ConversationRequest(BaseModel):
     language: Language
@@ -106,7 +106,7 @@ class ConversationResponse(BaseModel):
     vocabulary_used: Optional[List[str]] = []
 
 
-# ─── Translation Models ───────────────────────────────────────────────────────
+# Translation models
 
 class TranslationRequest(BaseModel):
     text: str
@@ -128,7 +128,7 @@ class TranslationResponse(BaseModel):
         return v
 
 
-# ─── Progress Models ──────────────────────────────────────────────────────────
+# Progress models
 
 class ProgressUpdateRequest(BaseModel):
     user_id: str
