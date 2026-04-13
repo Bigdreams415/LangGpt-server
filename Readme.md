@@ -178,9 +178,7 @@ Adjusting content or adding new prompts (e.g. for grammar drills) can be done he
 
 ### License & attribution
 
-[MIT License](LICENSE) (if applicable).
-
-Happy coding! 🚀
+[MIT License](LICENSE)
 
 ## Setup
 

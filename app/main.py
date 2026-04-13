@@ -36,11 +36,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/auth", tags=["Auth"])
-app.include_router(lessons.router, prefix="/lessons", tags=["Lessons"])
-app.include_router(quiz.router, prefix="/quiz", tags=["Quiz"])
-app.include_router(conversation.router, prefix="/conversation", tags=["Conversation"])
-app.include_router(progress.router, prefix="/progress", tags=["Progress"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(lessons.router, prefix="/api/v1/lessons", tags=["Lessons"])
+app.include_router(quiz.router, prefix="/api/v1/quiz", tags=["Quiz"])
+app.include_router(conversation.router, prefix="/api/v1/conversation", tags=["Conversation"])
+app.include_router(progress.router, prefix="/api/v1/progress", tags=["Progress"])
 
 
 @app.get("/")
