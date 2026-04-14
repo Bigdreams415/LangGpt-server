@@ -7,7 +7,7 @@ from app.core.config.settings import settings
 from app.core.database.database import init_db, close_db
 from app.core.database.redis import init_redis, close_redis
 from app.routers import lessons, quiz, conversation, progress, auth
-
+from app.routers.home import router as home
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,6 +41,7 @@ app.include_router(lessons.router, prefix="/api/v1/lessons", tags=["Lessons"])
 app.include_router(quiz.router, prefix="/api/v1/quiz", tags=["Quiz"])
 app.include_router(conversation.router, prefix="/api/v1/conversation", tags=["Conversation"])
 app.include_router(progress.router, prefix="/api/v1/progress", tags=["Progress"])
+app.include_router(home, prefix="/api/v1")
 
 
 @app.get("/")
