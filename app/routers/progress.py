@@ -1,4 +1,11 @@
-from fastapi import APIRouter
+from datetime import datetime, timezone
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database.database import get_db
 
 from app.models.schemas import (
     LessonUnit,
@@ -6,124 +13,282 @@ from app.models.schemas import (
     ProgressUpdateRequest,
     SubtopicProgress,
 )
+from app.models.user_model import UserProgress
+from app.services.lessons_service import TOPICS_METADATA
 
 router = APIRouter()
 
-# Simple in-memory store — replace with PostgreSQL/Supabase when ready
-_progress_store: dict = {}
-
 # Unit order defines the learning path (beginner → advanced)
 LEARNING_PATH = [unit.value for unit in LessonUnit]
+TOTAL_SUBTOPICS = sum(len(meta["subtopics"]) for meta in TOPICS_METADATA.values())
+
+
+def _parse_topic_key(topic_key: str) -> tuple[str, int | None]:
+    """Parse stored topic key format: '<unit>:<subtopic_index>' or legacy '<unit>'."""
+    if ":" not in topic_key:
+        return topic_key, None
+
+    unit, index_text = topic_key.split(":", 1)
+    try:
+        return unit, int(index_text)
+    except ValueError:
+        return unit, None
+
+
+def _build_next_recommendation(
+    completed_pairs: set[tuple[str, int]],
+) -> tuple[str, str]:
+    """Return next (unit, subtopic_name) based on first incomplete subtopic."""
+    for unit in LEARNING_PATH:
+        unit_meta = TOPICS_METADATA.get(unit)
+        if not unit_meta:
+            continue
+
+        for idx, subtopic in enumerate(unit_meta["subtopics"]):
+            if (unit, idx) not in completed_pairs:
+                return unit, subtopic["name"]
+
+    last_unit = LEARNING_PATH[-1]
+    last_subtopic = TOPICS_METADATA[last_unit]["subtopics"][-1]["name"]
+    return last_unit, last_subtopic
 
 
 @router.post("/update", response_model=ProgressResponse)
-async def update_progress(request: ProgressUpdateRequest):
+async def update_progress(
+    request: ProgressUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+):
     """Record a completed lesson/quiz score for a user."""
-    key = f"{request.user_id}:{request.language.value}"
-    if key not in _progress_store:
-        _progress_store[key] = {
-            "completed_units": [],
-            "completed_subtopics": {},
-            "current_level": "beginner",
-            "total_score": 0,
-        }
+    try:
+        user_uuid = UUID(request.user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid user_id format") from exc
 
-    record = _progress_store[key]
     unit_val = request.unit.value
-    subtopic_key = f"{unit_val}:{request.subtopic_index}"
+    topic_key = f"{unit_val}:{request.subtopic_index}"
 
-    if unit_val not in record["completed_units"]:
-        record["completed_units"].append(unit_val)
-
-    record["completed_subtopics"][subtopic_key] = {
-        "unit": unit_val,
-        "subtopic_name": request.subtopic_name,
-        "subtopic_index": request.subtopic_index,
-        "score": request.score,
-        "completed": True,
-    }
-
-    record["total_score"] = sum(
-        item["score"] for item in record["completed_subtopics"].values()
-    )
-    record["current_level"] = request.level.value
-
-    # Recommend next unit not yet completed
-    next_unit = next(
-        (u for u in LEARNING_PATH if u not in record["completed_units"]),
-        LEARNING_PATH[-1],
+    existing = await db.scalar(
+        select(UserProgress).where(
+            and_(
+                UserProgress.user_id == user_uuid,
+                UserProgress.language == request.language.value,
+                UserProgress.topic == topic_key,
+            )
+        )
     )
 
-    completed_subtopics = [
-        SubtopicProgress(**item) for item in record["completed_subtopics"].values()
-    ]
+    unit_progress = await db.scalar(
+        select(UserProgress).where(
+            and_(
+                UserProgress.user_id == user_uuid,
+                UserProgress.language == request.language.value,
+                UserProgress.topic == unit_val,
+            )
+        )
+    )
 
-    overall_progress_percent = (len(record["completed_units"]) / len(LEARNING_PATH)) * 100
+    now = datetime.now(timezone.utc)
+    if existing:
+        existing.score = request.score
+        existing.level = request.level.value
+        existing.completed = True
+        existing.completed_at = now
+        existing.attempts = (existing.attempts or 0) + 1
+    else:
+        db.add(
+            UserProgress(
+                user_id=user_uuid,
+                language=request.language.value,
+                topic=topic_key,
+                level=request.level.value,
+                score=request.score,
+                completed=True,
+                attempts=1,
+                completed_at=now,
+            )
+        )
+
+    if unit_progress:
+        unit_progress.level = request.level.value
+        unit_progress.completed = True
+        unit_progress.completed_at = now
+        unit_progress.attempts = (unit_progress.attempts or 0) + 1
+    else:
+        db.add(
+            UserProgress(
+                user_id=user_uuid,
+                language=request.language.value,
+                topic=unit_val,
+                level=request.level.value,
+                score=request.score,
+                completed=True,
+                attempts=1,
+                completed_at=now,
+            )
+        )
+
+    await db.flush()
+
+    rows = (
+        await db.scalars(
+            select(UserProgress)
+            .where(
+                and_(
+                    UserProgress.user_id == user_uuid,
+                    UserProgress.language == request.language.value,
+                )
+            )
+            .order_by(UserProgress.updated_at.asc())
+        )
+    ).all()
+
+    completed_subtopics: list[SubtopicProgress] = []
+    completed_units_set: set[str] = set()
+    completed_pairs: set[tuple[str, int]] = set()
+    total_score = 0
+
+    for row in rows:
+        unit, parsed_index = _parse_topic_key(row.topic)
+        if parsed_index is None:
+            continue
+
+        subtopics = TOPICS_METADATA.get(unit, {}).get("subtopics", [])
+        if not subtopics or parsed_index < 0 or parsed_index >= len(subtopics):
+            continue
+
+        completed_units_set.add(unit)
+        completed_pairs.add((unit, parsed_index))
+        total_score += row.score
+
+        completed_subtopics.append(
+            SubtopicProgress(
+                unit=unit,
+                subtopic_name=subtopics[parsed_index]["name"],
+                subtopic_index=parsed_index,
+                score=row.score,
+                completed=row.completed,
+            )
+        )
+
+    completed_units = [unit for unit in LEARNING_PATH if unit in completed_units_set]
+    next_unit, next_subtopic = _build_next_recommendation(completed_pairs)
+    overall_progress_percent = (
+        (len(completed_pairs) / TOTAL_SUBTOPICS) * 100 if TOTAL_SUBTOPICS else 0.0
+    )
 
     return ProgressResponse(
         user_id=request.user_id,
         language=request.language.value,
-        completed_units=record["completed_units"],
+        completed_units=completed_units,
         completed_subtopics=completed_subtopics,
         current_unit=unit_val,
         current_subtopic=request.subtopic_name,
-        current_level=record["current_level"],
-        total_score=record["total_score"],
+        current_level=request.level.value,
+        total_score=total_score,
         next_recommended_unit=next_unit,
-        next_recommended_subtopic="Start next available subtopic",
+        next_recommended_subtopic=next_subtopic,
         overall_progress_percent=round(overall_progress_percent, 2),
     )
 
 
 @router.get("/{user_id}/{language}", response_model=ProgressResponse)
-async def get_progress(user_id: str, language: str):
+async def get_progress(
+    user_id: str,
+    language: str,
+    db: AsyncSession = Depends(get_db),
+):
     """Get a user's progress for a specific language."""
-    key = f"{user_id}:{language}"
-    if key not in _progress_store:
-        # Return empty progress for new users
-        next_unit = LEARNING_PATH[0]
+    try:
+        user_uuid = UUID(user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid user_id format") from exc
+
+    normalized_language = language.strip().lower()
+    language_map = {
+        "igbo": "Igbo",
+        "yoruba": "Yoruba",
+        "hausa": "Hausa",
+    }
+    if normalized_language not in language_map:
+        raise HTTPException(status_code=400, detail="Invalid language")
+
+    language_value = language_map[normalized_language]
+
+    rows = (
+        await db.scalars(
+            select(UserProgress)
+            .where(
+                and_(
+                    UserProgress.user_id == user_uuid,
+                    UserProgress.language == language_value,
+                )
+            )
+            .order_by(UserProgress.updated_at.asc())
+        )
+    ).all()
+
+    if not rows:
+        next_unit, next_subtopic = _build_next_recommendation(set())
         return ProgressResponse(
             user_id=user_id,
-            language=language,
+            language=language_value,
             completed_units=[],
             completed_subtopics=[],
             current_unit=next_unit,
-            current_subtopic="Start first subtopic",
+            current_subtopic=next_subtopic,
             current_level="beginner",
             total_score=0,
             next_recommended_unit=next_unit,
-            next_recommended_subtopic="Start first subtopic",
+            next_recommended_subtopic=next_subtopic,
             overall_progress_percent=0.0,
         )
 
-    record = _progress_store[key]
-    next_unit = next(
-        (u for u in LEARNING_PATH if u not in record["completed_units"]),
-        LEARNING_PATH[-1],
-    )
+    completed_subtopics: list[SubtopicProgress] = []
+    completed_units_set: set[str] = set()
+    completed_pairs: set[tuple[str, int]] = set()
+    total_score = 0
 
-    completed_subtopics = [
-        SubtopicProgress(**item) for item in record["completed_subtopics"].values()
-    ]
+    for row in rows:
+        unit, parsed_index = _parse_topic_key(row.topic)
+        if parsed_index is None:
+            continue
 
-    current_unit = (
-        record["completed_units"][-1] if record["completed_units"] else LEARNING_PATH[0]
+        subtopics = TOPICS_METADATA.get(unit, {}).get("subtopics", [])
+        if not subtopics or parsed_index < 0 or parsed_index >= len(subtopics):
+            continue
+
+        completed_units_set.add(unit)
+        completed_pairs.add((unit, parsed_index))
+        total_score += row.score
+
+        completed_subtopics.append(
+            SubtopicProgress(
+                unit=unit,
+                subtopic_name=subtopics[parsed_index]["name"],
+                subtopic_index=parsed_index,
+                score=row.score,
+                completed=row.completed,
+            )
+        )
+
+    completed_units = [unit for unit in LEARNING_PATH if unit in completed_units_set]
+    current_subtopic = completed_subtopics[-1] if completed_subtopics else None
+    current_level = rows[-1].level.value if hasattr(rows[-1].level, "value") else str(rows[-1].level)
+    next_unit, next_subtopic = _build_next_recommendation(completed_pairs)
+    overall_progress_percent = (
+        (len(completed_pairs) / TOTAL_SUBTOPICS) * 100 if TOTAL_SUBTOPICS else 0.0
     )
-    current_subtopic = (
-        completed_subtopics[-1].subtopic_name if completed_subtopics else "Start first subtopic"
-    )
-    overall_progress_percent = (len(record["completed_units"]) / len(LEARNING_PATH)) * 100
 
     return ProgressResponse(
         user_id=user_id,
-        language=language,
-        completed_units=record["completed_units"],
+        language=language_value,
+        completed_units=completed_units,
         completed_subtopics=completed_subtopics,
-        current_unit=current_unit,
-        current_subtopic=current_subtopic,
-        current_level=record["current_level"],
-        total_score=record["total_score"],
+        current_unit=current_subtopic.unit if current_subtopic else next_unit,
+        current_subtopic=current_subtopic.subtopic_name if current_subtopic else next_subtopic,
+        current_level=current_level,
+        total_score=total_score,
         next_recommended_unit=next_unit,
-        next_recommended_subtopic="Start next available subtopic",
+        next_recommended_subtopic=next_subtopic,
         overall_progress_percent=round(overall_progress_percent, 2),
     )

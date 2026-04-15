@@ -101,7 +101,7 @@ class User(Base):
 
 
 class UserProgress(Base):
-    """Tracks per-user progress on each topic."""
+    """Tracks per-user progress on each unit/subtopic."""
     __tablename__ = "user_progress"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -109,6 +109,8 @@ class UserProgress(Base):
 
     language = Column(SAEnum(LanguageChoice), nullable=False)
     topic = Column(String(100), nullable=False)
+    subtopic_index = Column(Integer, nullable=True)
+    subtopic_name = Column(String(255), nullable=True)
     level = Column(SAEnum(LevelChoice), nullable=False)
     score = Column(Integer, default=0, nullable=False)
     completed = Column(Boolean, default=False, nullable=False)
@@ -122,4 +124,7 @@ class UserProgress(Base):
     user = relationship("User", back_populates="progress_records")
 
     def __repr__(self) -> str:
-        return f"<UserProgress user={self.user_id} topic={self.topic}>"
+        return (
+            f"<UserProgress user={self.user_id} topic={self.topic} "
+            f"subtopic_index={self.subtopic_index}>"
+        )
