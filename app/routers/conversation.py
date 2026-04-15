@@ -7,6 +7,29 @@ from app.services.lessons_service import lessons_service
 router = APIRouter()
 
 
+def _resolve_subtopic_name(
+    requested_subtopic: str | None,
+    indexed_subtopic: str,
+) -> str:
+    """Ensure optional subtopic override matches the indexed subtopic."""
+    if not requested_subtopic:
+        return indexed_subtopic
+
+    normalized_requested = " ".join(requested_subtopic.strip().lower().split())
+    normalized_indexed = " ".join(indexed_subtopic.strip().lower().split())
+
+    if normalized_requested != normalized_indexed:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "subtopic_name does not match subtopic_index for this unit. "
+                f"Expected subtopic '{indexed_subtopic}' for the provided index."
+            ),
+        )
+
+    return indexed_subtopic
+
+
 @router.post("/", response_model=ConversationResponse)
 async def chat(request: ConversationRequest):
     """
@@ -23,7 +46,10 @@ async def chat(request: ConversationRequest):
             unit_id=unit,
             subtopic_index=request.subtopic_index,
         )
-        chosen_subtopic = request.subtopic_name or subtopic_meta["subtopic_name"]
+        chosen_subtopic = _resolve_subtopic_name(
+            requested_subtopic=request.subtopic_name,
+            indexed_subtopic=subtopic_meta["subtopic_name"],
+        )
 
         prompt = conversation_prompt(
             language=language,

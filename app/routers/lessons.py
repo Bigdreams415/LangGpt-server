@@ -10,9 +10,32 @@ from app.services.lessons_service import lessons_service
 router = APIRouter()
 
 
+def _resolve_subtopic_name(
+    requested_subtopic: str | None,
+    indexed_subtopic: str,
+) -> str:
+    """Ensure optional subtopic override matches the indexed subtopic."""
+    if not requested_subtopic:
+        return indexed_subtopic
+
+    normalized_requested = " ".join(requested_subtopic.strip().lower().split())
+    normalized_indexed = " ".join(indexed_subtopic.strip().lower().split())
+
+    if normalized_requested != normalized_indexed:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "subtopic_name does not match subtopic_index for this unit. "
+                f"Expected subtopic '{indexed_subtopic}' for the provided index."
+            ),
+        )
+
+    return indexed_subtopic
+
+
 @router.post("/", response_model=LessonResponse)
 async def get_lesson(request: LessonRequest):
-    """Generate a vocabulary and culture lesson for a given topic and level."""
+    """Generate a vocabulary and culture lesson for a given unit and subtopic."""
     try:
         language = request.language.value
         level = request.level.value
@@ -24,7 +47,10 @@ async def get_lesson(request: LessonRequest):
             subtopic_index=request.subtopic_index,
         )
 
-        chosen_subtopic = request.subtopic_name or subtopic_meta["subtopic_name"]
+        chosen_subtopic = _resolve_subtopic_name(
+            requested_subtopic=request.subtopic_name,
+            indexed_subtopic=subtopic_meta["subtopic_name"],
+        )
 
         unit_detail = lessons_service.get_lesson_detail(language, unit)
         total_subtopics = len(unit_detail.subtopics)
@@ -55,10 +81,10 @@ async def translate(request: TranslationRequest):
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 
 
-@router.get("/topics")
-def get_topics():
-    """Return all available lesson topics."""
-    return {"topics": [t.value for t in LessonUnit]}
+@router.get("/units")
+def get_units():
+    """Return all available lesson units."""
+    return {"units": [t.value for t in LessonUnit]}
 
 
 @router.get("/languages")
@@ -77,7 +103,7 @@ def get_languages():
 async def list_lessons(
     language: str,
     level: Optional[str] = Query(None, description="Filter by level: beginner, intermediate, advanced"),
-    limit: int = Query(20, ge=1, le=100, description="Number of topics to return"),
+    limit: int = Query(20, ge=1, le=100, description="Number of units to return"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ):
     """Get a paginated list of all available lessons for a language."""
@@ -89,7 +115,7 @@ async def list_lessons(
     )
 
 
-@router.get("/topic/{language}/{topic_id}", response_model=LessonDetailResponse)
-async def get_lesson_by_id(language: str, topic_id: str):
-    """Get detailed lesson content for a specific topic."""
-    return lessons_service.get_lesson_detail(language, topic_id)
+@router.get("/unit/{language}/{unit_id}", response_model=LessonDetailResponse)
+async def get_unit_by_id(language: str, unit_id: str):
+    """Get detailed lesson content for a specific unit."""
+    return lessons_service.get_lesson_detail(language, unit_id)
