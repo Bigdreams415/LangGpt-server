@@ -16,7 +16,7 @@ async def generate_quiz(request: QuizRequest):
         prompt = quiz_prompt(
             request.language,
             request.level,
-            request.topic,
+            request.unit,
             request.num_questions,
         )
         data = await generate(prompt, expect_json=True)

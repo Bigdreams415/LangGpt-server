@@ -1,6 +1,6 @@
 from .user_model import User, UserProgress, AuthProvider, LanguageChoice, LevelChoice
 from .schemas import (
-    Language, Level, LessonTopic,
+    Language, Level, LessonUnit,
     LessonRequest, LessonResponse, VocabItem,
     QuizRequest, QuizResponse, QuizQuestion,
     CheckAnswerRequest, CheckAnswerResponse,
@@ -11,7 +11,7 @@ from .schemas import (
 
 __all__ = [
     "User", "UserProgress", "AuthProvider", "LanguageChoice", "LevelChoice",
-    "Language", "Level", "LessonTopic",
+    "Language", "Level", "LessonUnit",
     "LessonRequest", "LessonResponse", "VocabItem",
     "QuizRequest", "QuizResponse", "QuizQuestion",
     "CheckAnswerRequest", "CheckAnswerResponse",

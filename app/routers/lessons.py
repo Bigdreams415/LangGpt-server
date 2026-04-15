@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 
-from app.models.schemas import LessonRequest, LessonResponse, TranslationRequest, TranslationResponse
+from app.models.schemas import LessonRequest, LessonResponse, TranslationRequest, TranslationResponse, LessonUnit
 from app.services.gemini import generate
 from app.prompts.templates import lesson_prompt, translation_prompt
 from app.schemas.lessons_schemas import LessonsListResponse, LessonDetailResponse
@@ -14,7 +14,7 @@ router = APIRouter()
 async def get_lesson(request: LessonRequest):
     """Generate a vocabulary and culture lesson for a given topic and level."""
     try:
-        prompt = lesson_prompt(request.language, request.level, request.topic)
+        prompt = lesson_prompt(request.language, request.level, request.unit)
         data = await generate(prompt, expect_json=True)
         return LessonResponse(**data)
     except Exception as e:
@@ -35,8 +35,7 @@ async def translate(request: TranslationRequest):
 @router.get("/topics")
 def get_topics():
     """Return all available lesson topics."""
-    from app.models.schemas import LessonTopic
-    return {"topics": [t.value for t in LessonTopic]}
+    return {"topics": [t.value for t in LessonUnit]}
 
 
 @router.get("/languages")

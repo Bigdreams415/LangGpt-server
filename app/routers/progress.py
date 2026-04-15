@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from app.models.schemas import ProgressUpdateRequest, ProgressResponse, LessonTopic
+from app.models.schemas import ProgressUpdateRequest, ProgressResponse
 
 router = APIRouter()
 
@@ -28,7 +28,7 @@ async def update_progress(request: ProgressUpdateRequest):
         }
 
     record = _progress_store[key]
-    topic_val = request.topic.value
+    topic_val = request.unit.value
 
     if topic_val not in record["completed_topics"]:
         record["completed_topics"].append(topic_val)

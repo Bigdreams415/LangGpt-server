@@ -16,7 +16,7 @@ async def chat(request: ConversationRequest):
         prompt = conversation_prompt(
             request.language,
             request.level,
-            request.topic,
+            request.unit,
             request.conversation_history or [],
             request.user_message,
         )
