@@ -65,14 +65,14 @@ async def update_progress(
         raise HTTPException(status_code=400, detail="Invalid user_id format") from exc
 
     unit_val = request.unit.value
-    topic_key = f"{unit_val}:{request.subtopic_index}"
 
     existing = await db.scalar(
         select(UserProgress).where(
             and_(
                 UserProgress.user_id == user_uuid,
                 UserProgress.language == request.language.value,
-                UserProgress.topic == topic_key,
+                UserProgress.topic == unit_val,
+                UserProgress.subtopic_index == request.subtopic_index,
             )
         )
     )
@@ -83,6 +83,7 @@ async def update_progress(
                 UserProgress.user_id == user_uuid,
                 UserProgress.language == request.language.value,
                 UserProgress.topic == unit_val,
+                UserProgress.subtopic_index.is_(None),
             )
         )
     )
@@ -99,7 +100,9 @@ async def update_progress(
             UserProgress(
                 user_id=user_uuid,
                 language=request.language.value,
-                topic=topic_key,
+                topic=unit_val,
+                subtopic_index=request.subtopic_index,
+                subtopic_name=request.subtopic_name,
                 level=request.level.value,
                 score=request.score,
                 completed=True,
@@ -113,6 +116,8 @@ async def update_progress(
         unit_progress.completed = True
         unit_progress.completed_at = now
         unit_progress.attempts = (unit_progress.attempts or 0) + 1
+        if unit_progress.score < request.score:
+            unit_progress.score = request.score
     else:
         db.add(
             UserProgress(
@@ -126,6 +131,9 @@ async def update_progress(
                 completed_at=now,
             )
         )
+
+    if existing:
+        existing.subtopic_name = request.subtopic_name
 
     await db.flush()
 
@@ -148,7 +156,10 @@ async def update_progress(
     total_score = 0
 
     for row in rows:
-        unit, parsed_index = _parse_topic_key(row.topic)
+        unit = row.topic
+        parsed_index = row.subtopic_index
+        if parsed_index is None:
+            unit, parsed_index = _parse_topic_key(row.topic)
         if parsed_index is None:
             continue
 
@@ -163,7 +174,7 @@ async def update_progress(
         completed_subtopics.append(
             SubtopicProgress(
                 unit=unit,
-                subtopic_name=subtopics[parsed_index]["name"],
+                subtopic_name=row.subtopic_name or subtopics[parsed_index]["name"],
                 subtopic_index=parsed_index,
                 score=row.score,
                 completed=row.completed,
@@ -249,7 +260,10 @@ async def get_progress(
     total_score = 0
 
     for row in rows:
-        unit, parsed_index = _parse_topic_key(row.topic)
+        unit = row.topic
+        parsed_index = row.subtopic_index
+        if parsed_index is None:
+            unit, parsed_index = _parse_topic_key(row.topic)
         if parsed_index is None:
             continue
 
@@ -264,7 +278,7 @@ async def get_progress(
         completed_subtopics.append(
             SubtopicProgress(
                 unit=unit,
-                subtopic_name=subtopics[parsed_index]["name"],
+                subtopic_name=row.subtopic_name or subtopics[parsed_index]["name"],
                 subtopic_index=parsed_index,
                 score=row.score,
                 completed=row.completed,
