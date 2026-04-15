@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from app.schemas.lessons_schemas import (
-    LessonTopicResponse,
+    LessonUnitResponse,
     LessonsListResponse,
     LessonDetailResponse,
 )
@@ -1005,7 +1005,7 @@ class LessonsService:
                 continue
 
             all_units.append(
-                LessonTopicResponse(
+                LessonUnitResponse(
                     id=unit_id,
                     title=metadata["title"],
                     emoji=metadata["emoji"],

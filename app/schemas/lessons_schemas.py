@@ -11,7 +11,7 @@ class SubtopicMeta(BaseModel):
     is_completed: bool = False
 
 
-class LessonTopicResponse(BaseModel):
+class LessonUnitResponse(BaseModel):
     """
     Summary card for a lesson unit — returned in paginated list views.
     Does NOT include the full subtopic list (use LessonDetailResponse for that).
@@ -28,7 +28,7 @@ class LessonTopicResponse(BaseModel):
 
 class LessonsListResponse(BaseModel):
     """Paginated list of lesson units for a given language."""
-    topics: List[LessonTopicResponse]
+    topics: List[LessonUnitResponse]
     total: int
     language: str
 
