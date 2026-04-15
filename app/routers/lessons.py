@@ -14,7 +14,30 @@ router = APIRouter()
 async def get_lesson(request: LessonRequest):
     """Generate a vocabulary and culture lesson for a given topic and level."""
     try:
-        prompt = lesson_prompt(request.language, request.level, request.unit)
+        language = request.language.value
+        level = request.level.value
+        unit = request.unit.value
+
+        subtopic_meta = lessons_service.get_subtopic_detail(
+            language=language,
+            unit_id=unit,
+            subtopic_index=request.subtopic_index,
+        )
+
+        chosen_subtopic = request.subtopic_name or subtopic_meta["subtopic_name"]
+
+        unit_detail = lessons_service.get_lesson_detail(language, unit)
+        total_subtopics = len(unit_detail.subtopics)
+
+        prompt = lesson_prompt(
+            language=language,
+            level=level,
+            unit=unit,
+            subtopic=chosen_subtopic,
+            subtopic_index=request.subtopic_index,
+            total_subtopics=total_subtopics,
+            next_subtopic=subtopic_meta["next_subtopic_name"],
+        )
         data = await generate(prompt, expect_json=True)
         return LessonResponse(**data)
     except Exception as e:
@@ -25,7 +48,7 @@ async def get_lesson(request: LessonRequest):
 async def translate(request: TranslationRequest):
     """Translate text to or from any of the supported languages."""
     try:
-        prompt = translation_prompt(request.text, request.from_language, request.to_language)
+        prompt = translation_prompt(request.text, request.from_language, request.to_language.value)
         data = await generate(prompt, expect_json=True)
         return TranslationResponse(**data)
     except Exception as e:

@@ -5,6 +5,7 @@ from app.models.schemas import (
 )
 from app.services.gemini import generate
 from app.prompts.templates import quiz_prompt, check_answer_prompt
+from app.services.lessons_service import lessons_service
 
 router = APIRouter()
 
@@ -13,11 +14,24 @@ router = APIRouter()
 async def generate_quiz(request: QuizRequest):
     """Generate a multiple-choice quiz for a given language, topic, and level."""
     try:
+        language = request.language.value
+        level = request.level.value
+        unit = request.unit.value
+
+        subtopic_meta = lessons_service.get_subtopic_detail(
+            language=language,
+            unit_id=unit,
+            subtopic_index=request.subtopic_index,
+        )
+
+        chosen_subtopic = request.subtopic_name or subtopic_meta["subtopic_name"]
+
         prompt = quiz_prompt(
-            request.language,
-            request.level,
-            request.unit,
-            request.num_questions,
+            language=language,
+            level=level,
+            unit=unit,
+            subtopic=chosen_subtopic,
+            num_questions=request.num_questions,
         )
         data = await generate(prompt, expect_json=True)
         return QuizResponse(**data)
@@ -30,7 +44,7 @@ async def check_answer(request: CheckAnswerRequest):
     """Check a user's answer and provide feedback."""
     try:
         prompt = check_answer_prompt(
-            request.language,
+            request.language.value,
             request.question,
             request.user_answer,
             request.correct_answer,

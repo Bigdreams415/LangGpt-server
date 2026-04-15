@@ -36,25 +36,45 @@ HAUSA CULTURAL RULES:
     return contexts.get(language, "")
 
 
-def lesson_prompt(language: str, level: str, topic: str) -> str:
+def lesson_prompt(
+    language: str,
+    level: str,
+    unit: str,
+    subtopic: str,
+    subtopic_index: int,
+    total_subtopics: int,
+    next_subtopic: str | None,
+) -> str:
     return f"""
 You are a native {language} speaker and expert language tutor building a lesson for a Nigerian language learning app.
 
 {_cultural_context(language)}
 
-Create a {level}-level lesson on the topic: "{topic}" in {language}.
+Create a {level}-level lesson in {language} for:
+- Unit: "{unit}"
+- Subtopic: "{subtopic}"
+- Subtopic position: {subtopic_index + 1}/{total_subtopics}
 
 LEVEL GUIDE:
 - beginner: common everyday words with simple sentences, focus on pronunciation
 - intermediate: full sentences, grammar patterns, situational dialogues
 - advanced: complex expressions, proverbs, idioms, cultural nuance
 
+SUBTOPIC TEACHING RULES:
+- Teach ONLY this subtopic. Do not drift into other subtopics.
+- Keep examples practical for diaspora learners who want to speak with family/community.
+- Build from easy to slightly harder within the same response.
+- Keep cultural claims accurate and specific to Nigerian context.
+
 You must respond ONLY with valid JSON (no markdown, no extra text):
 {{
   "language": "{language}",
   "level": "{level}",
-  "topic": "{topic}",
-  "introduction": "A 2-sentence engaging intro connecting this topic to real {language} daily life and culture",
+  "unit": "{unit}",
+  "subtopic": "{subtopic}",
+  "subtopic_index": {subtopic_index},
+  "total_subtopics": {total_subtopics},
+  "introduction": "A 2-sentence engaging intro connecting this subtopic to real {language} daily life and culture",
   "vocabulary": [
     {{
       "word": "the {language} word with correct diacritics",
@@ -65,21 +85,32 @@ You must respond ONLY with valid JSON (no markdown, no extra text):
     }}
   ],
   "cultural_note": "A specific, accurate cultural fact about how this topic relates to {language} people's real daily life",
-  "tip": "A practical memory trick connecting the word to something a Nigerian learner would recognise"
+  "tip": "A practical memory trick connecting the word to something a Nigerian learner would recognise",
+  "next_subtopic": {f'"{next_subtopic}"' if next_subtopic else 'null'}
 }}
 
 Include exactly 8 vocabulary items.
 Every example must feel like it came from a real {language} community — not a textbook written by a westerner.
+Return plain JSON only: double quotes, no trailing commas, no comments.
 """
 
 
-def quiz_prompt(language: str, level: str, topic: str, num_questions: int) -> str:
+def quiz_prompt(
+    language: str,
+    level: str,
+    unit: str,
+    subtopic: str,
+    num_questions: int,
+) -> str:
     return f"""
 You are a native {language} speaker and expert language tutor creating a quiz for a Nigerian language learning app.
 
 {_cultural_context(language)}
 
-Create exactly {num_questions} {level}-level multiple choice questions about "{topic}" in {language}.
+Create exactly {num_questions} {level}-level multiple choice questions for:
+- Unit: "{unit}"
+- Subtopic: "{subtopic}"
+- Language: {language}
 
 QUESTION TYPE MIX (distribute across these):
 - Translation (English → {language} or reverse)
@@ -87,10 +118,17 @@ QUESTION TYPE MIX (distribute across these):
 - Cultural knowledge (what would a {language} speaker do/say in this situation)
 - Pronunciation matching (which phonetic guide matches this word)
 
+ASSESSMENT RULES:
+- Questions must target this subtopic directly.
+- Avoid repeating the same vocabulary in every question.
+- Keep one clearly correct option and three plausible distractors.
+- Do not use trick questions.
+
 You must respond ONLY with valid JSON (no markdown, no extra text):
 {{
   "language": "{language}",
-  "topic": "{topic}",
+  "unit": "{unit}",
+  "subtopic": "{subtopic}",
   "questions": [
     {{
       "question": "The quiz question — use Nigerian names and contexts",
@@ -103,6 +141,7 @@ You must respond ONLY with valid JSON (no markdown, no extra text):
 
 Wrong options (distractors) must be plausible — common mistakes a learner actually makes, not random wrong answers.
 All scenarios must be set in Nigeria with Nigerian names, foods, and situations.
+Return plain JSON only: double quotes, no trailing commas, no comments.
 """
 
 
@@ -125,7 +164,14 @@ Respond ONLY with valid JSON (no markdown, no extra text):
 """
 
 
-def conversation_prompt(language: str, level: str, topic: str, history: list, user_message: str) -> str:
+def conversation_prompt(
+  language: str,
+  level: str,
+  unit: str,
+  subtopic: str,
+  history: list,
+  user_message: str,
+) -> str:
     history_text = ""
     for msg in history[-6:]:
         history_text += f"{msg['role'].capitalize()}: {msg['content']}\n"
@@ -137,7 +183,11 @@ def conversation_prompt(language: str, level: str, topic: str, history: list, us
     }
 
     return f"""
-You are a friendly, native {language} speaker helping a {level}-level learner practice "{topic}" conversation.
+  You are a friendly, native {language} speaker helping a {level}-level learner practice conversation.
+
+  Lesson focus:
+  - Unit: "{unit}"
+  - Subtopic: "{subtopic}"
 
 {_cultural_context(language)}
 
@@ -152,6 +202,8 @@ RULES:
 - Set your responses in realistic Nigerian daily life contexts
 - Gently correct {language} mistakes without discouraging the learner
 - If the user makes a cultural mistake (not just language), note it kindly
+- Keep the interaction aligned to the listed subtopic
+- If user goes off-topic, gently steer back while still answering naturally
 
 Respond ONLY with valid JSON (no markdown, no extra text):
 {{
