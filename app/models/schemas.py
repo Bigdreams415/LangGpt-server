@@ -38,10 +38,8 @@ class LessonUnit(str, Enum):
     culture             = "culture"
 
 
-# ---------------------------------------------------------------------------
-# Lesson models
-# ---------------------------------------------------------------------------
 
+# Lesson models
 class LessonRequest(BaseModel):
     language: Language
     level: Level = Level.beginner
@@ -72,10 +70,7 @@ class LessonResponse(BaseModel):
     next_subtopic: Optional[str] = None # Name of the next subtopic (None if last)
 
 
-# ---------------------------------------------------------------------------
 # Quiz models
-# ---------------------------------------------------------------------------
-
 class QuizRequest(BaseModel):
     language: Language
     level: Level = Level.beginner
@@ -99,10 +94,7 @@ class QuizResponse(BaseModel):
     questions: List[QuizQuestion]
 
 
-# ---------------------------------------------------------------------------
 # Answer checking
-# ---------------------------------------------------------------------------
-
 class CheckAnswerRequest(BaseModel):
     language: Language
     question: str
@@ -116,10 +108,7 @@ class CheckAnswerResponse(BaseModel):
     encouragement: str
 
 
-# ---------------------------------------------------------------------------
 # Conversation models
-# ---------------------------------------------------------------------------
-
 class ConversationRequest(BaseModel):
     language: Language
     level: Level = Level.beginner
@@ -137,9 +126,8 @@ class ConversationResponse(BaseModel):
     vocabulary_used: Optional[List[str]] = []
 
 
-# ---------------------------------------------------------------------------
+
 # Translation models
-# ---------------------------------------------------------------------------
 
 class TranslationRequest(BaseModel):
     text: str
@@ -161,10 +149,7 @@ class TranslationResponse(BaseModel):
         return v
 
 
-# ---------------------------------------------------------------------------
 # Progress models
-# ---------------------------------------------------------------------------
-
 class SubtopicProgress(BaseModel):
     unit: str
     subtopic_name: str

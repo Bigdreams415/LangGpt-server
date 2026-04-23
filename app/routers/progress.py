@@ -18,7 +18,7 @@ from app.services.lessons_service import TOPICS_METADATA
 
 router = APIRouter()
 
-# Unit order defines the learning path (beginner → advanced)
+# Unit order defines the learning path (beginner to advanced)
 LEARNING_PATH = [unit.value for unit in LessonUnit]
 TOTAL_SUBTOPICS = sum(len(meta["subtopics"]) for meta in TOPICS_METADATA.values())
 
