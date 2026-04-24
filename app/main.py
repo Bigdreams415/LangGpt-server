@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config.settings import settings
 from app.core.database.database import init_db, close_db
-from app.core.database.redis import inits_redis, close_redis
+from app.core.database.redis import init_redis, close_redis
 from app.routers import lessons, quiz, conversation, progress, auth, avatar
 from app.routers.home import router as home
 

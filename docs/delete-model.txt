@@ -1,0 +1,7 @@
+
+# things to delete when model is to be deleted/remove
+# Delete just the conda env + all installed packages
+conda env remove -n sadtalker
+
+# Delete the model weights + repo
+rm -rf /Users/bigdreams/workspace/LangGpt/sadtalker
