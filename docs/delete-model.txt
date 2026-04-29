@@ -5,3 +5,4 @@ conda env remove -n sadtalker
 
 # Delete the model weights + repo
 rm -rf /Users/bigdreams/workspace/LangGpt/sadtalker
+
