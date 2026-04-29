@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     )
 
     # App Settings
-    app_name: str = "LangGpt"
+    app_name: str = "KinSpeak"
     app_env: str = "development"
     debug: bool = True
     api_prefix: str = "/api/v1"

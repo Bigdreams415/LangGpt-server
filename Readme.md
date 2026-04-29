@@ -1,4 +1,4 @@
-# LangGpt Backend API
+# KinSpeak Backend API
 
 A comprehensive backend for a language‑learning mobile/web app focused on **Igbo, Yoruba** and **Hausa**. The service is built with FastAPI, uses Google Gemini for AI generation, and includes full user authentication, progress tracking and content‑generation endpoints.
 

@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="LangGpt API",
+    title="KinSpeak API",
     description="Language learning backend for Igbo, Yoruba, and Hausa",
     version="1.0.0",
     lifespan=lifespan,
@@ -63,7 +63,7 @@ app.include_router(home,                prefix="/api/v1")
 @app.get("/")
 def root():
     return {
-        "message": "LangGpt API is running!",
+        "message": "KinSpeak API is running!",
         "supported_languages": ["Igbo", "Yoruba", "Hausa"],
         "docs": "/docs",
     }
