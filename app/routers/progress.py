@@ -2,10 +2,12 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from redis.asyncio import Redis
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database.database import get_db
+from app.core.database.redis import get_redis
 
 from app.models.schemas import (
     LessonUnit,
@@ -13,8 +15,9 @@ from app.models.schemas import (
     ProgressUpdateRequest,
     SubtopicProgress,
 )
-from app.models.user_model import UserProgress
+from app.models.user_model import User, UserProgress
 from app.services.lessons_service import TOPICS_METADATA
+from password.common.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -56,14 +59,11 @@ def _build_next_recommendation(
 @router.post("/update", response_model=ProgressResponse)
 async def update_progress(
     request: ProgressUpdateRequest,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Record a completed lesson/quiz score for a user."""
-    try:
-        user_uuid = UUID(request.user_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Invalid user_id format") from exc
-
+    """Record a completed lesson/quiz score for a user. Updates streak and XP."""
+    user_uuid = current_user.id
     unit_val = request.unit.value
 
     existing = await db.scalar(
@@ -187,8 +187,25 @@ async def update_progress(
         (len(completed_pairs) / TOTAL_SUBTOPICS) * 100 if TOTAL_SUBTOPICS else 0.0
     )
 
+    # Update streak and XP on the user record
+    today = datetime.now(timezone.utc).date()
+    if current_user.last_activity_date:
+        delta = (today - current_user.last_activity_date.date()).days
+        if delta == 1:
+            current_user.streak_count = (current_user.streak_count or 0) + 1
+        elif delta > 1:
+            current_user.streak_count = 1
+        # delta == 0: same day, no streak change
+    else:
+        current_user.streak_count = 1
+
+    current_user.last_activity_date = datetime.now(timezone.utc)
+    current_user.total_xp = (current_user.total_xp or 0) + 10
+
+    await db.commit()
+
     return ProgressResponse(
-        user_id=request.user_id,
+        user_id=str(current_user.id),
         language=request.language.value,
         completed_units=completed_units,
         completed_subtopics=completed_subtopics,
@@ -199,6 +216,8 @@ async def update_progress(
         next_recommended_unit=next_unit,
         next_recommended_subtopic=next_subtopic,
         overall_progress_percent=round(overall_progress_percent, 2),
+        streak_count=current_user.streak_count,
+        total_xp=current_user.total_xp,
     )
 
 

@@ -88,7 +88,7 @@ class HomeService:
         continue_learning = await self._get_continue_learning(user, db)
         stats = await self._get_stats(user, db)
         today_lessons = await self._get_today_lessons(user, db)
-        leaderboard = await self._get_leaderboard(db)
+        leaderboard = await self._get_leaderboard(db, language=user.selected_language)
 
         return HomeDashboardResponse(
             user_name=(user.full_name or "Learner").split()[0],
@@ -199,12 +199,12 @@ class HomeService:
 
         return today_lessons
 
-    async def _get_leaderboard(self, db: AsyncSession, limit: int = 3) -> List[LeaderboardEntryResponse]:
+    async def _get_leaderboard(self, db: AsyncSession, language=None, limit: int = 5) -> List[LeaderboardEntryResponse]:
+        query = select(User.full_name, User.total_xp).where(User.is_active == True)
+        if language is not None:
+            query = query.where(User.selected_language == language)
         result = await db.execute(
-            select(User.full_name, User.total_xp)
-            .where(User.is_active == True)
-            .order_by(User.total_xp.desc())
-            .limit(limit)
+            query.order_by(User.total_xp.desc()).limit(limit)
         )
 
         medals = ["🥇", "🥈", "🥉"]

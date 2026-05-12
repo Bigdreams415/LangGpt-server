@@ -180,3 +180,5 @@ class ProgressResponse(BaseModel):
     next_recommended_unit: str
     next_recommended_subtopic: str
     overall_progress_percent: float     # 0.0–100.0
+    streak_count: int = 0
+    total_xp: int = 0
