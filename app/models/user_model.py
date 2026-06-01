@@ -95,6 +95,17 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    device_tokens = relationship(
+        "DeviceToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    notification_preferences = relationship(
+        "NotificationPreference",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
     def __repr__(self) -> str:
         return f"<User id={self.id} username={self.username}>"

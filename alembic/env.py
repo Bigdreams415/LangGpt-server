@@ -13,6 +13,7 @@ from app.core.config.settings import settings
 # Side-effect import: register all models with Base.metadata so autogenerate
 # picks them up even if they haven't been imported elsewhere.
 import app.models.user_model  # noqa: F401
+import app.models.notification_model  # noqa: F401
 # ───────────────────────────────────────────────────────────────────────────
 
 # this is the Alembic Config object, which provides

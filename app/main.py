@@ -8,8 +8,9 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config.settings import settings
 from app.core.database.database import init_db, close_db
 from app.core.database.redis import init_redis, close_redis
-from app.routers import lessons, quiz, conversation, progress, auth, avatar
+from app.routers import lessons, quiz, conversation, progress, auth, avatar, notifications, user_routes
 from app.routers.home import router as home
+from app.services.notification_service import notification_service
 
 
 # Ensure static directories exist at startup
@@ -22,6 +23,7 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle events."""
     await init_redis()
     await init_db()
+    notification_service.initialize(settings.firebase_credentials_path)
     yield
     await close_redis()
     await close_db()
@@ -58,6 +60,8 @@ app.include_router(conversation.router, prefix="/api/v1/conversation", tags=["Co
 app.include_router(progress.router,     prefix="/api/v1/progress",     tags=["Progress"])
 app.include_router(avatar.router,       prefix="/api/v1/avatar",       tags=["Avatar"])
 app.include_router(home,                prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["Notifications"])
+app.include_router(user_routes.router,   prefix="/api/v1/users",         tags=["Users"])
 
 
 @app.get("/")

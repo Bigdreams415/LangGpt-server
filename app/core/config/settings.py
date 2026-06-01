@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     # AI (Gemini) API key
     gemini_api_key: str = ""
 
+    # Firebase / FCM
+    firebase_credentials_path: str = ""
+    firebase_project_id: str = ""
+    push_notifications_enabled: bool = True
+    fcm_dry_run: bool = False
+
     # Security settings
     allowed_origins: str = "http://localhost:3000"
     rate_limit_per_minute: int = 60

@@ -29,3 +29,7 @@ alembic/versions/__pycache__/
 
 # macOS
 .DS_Store
+
+# Firebase service account credentials
+*firebase-adminsdk*.json
+*-firebase-adminsdk-*.json
