@@ -35,18 +35,22 @@ class NotificationService:
             logger.info("Push notifications disabled by settings; skipping Firebase init")
             return
 
-        if not credentials_path or not Path(credentials_path).exists():
-            logger.warning(
-                "Firebase credentials not found at '%s'; push notifications disabled",
-                credentials_path,
-            )
-            return
-
         try:
+            import json
             import firebase_admin
             from firebase_admin import credentials, messaging
 
-            cred = credentials.Certificate(credentials_path)
+            if settings.firebase_credentials_json:
+                cred = credentials.Certificate(json.loads(settings.firebase_credentials_json))
+            elif credentials_path and Path(credentials_path).exists():
+                cred = credentials.Certificate(credentials_path)
+            else:
+                logger.warning(
+                    "Firebase credentials not found at '%s'; push notifications disabled",
+                    credentials_path,
+                )
+                return
+
             firebase_admin.initialize_app(cred)
             self._messaging = messaging
             logger.info("Firebase initialized successfully")

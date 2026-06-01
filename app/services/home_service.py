@@ -13,65 +13,11 @@ from app.schemas.home_schemas import (
     StatCardResponse,
     TodayLessonResponse,
 )
+from app.services.lessons_service import TOPICS_METADATA
 
-
-TOPIC_EMOJIS = {
-    "greetings": "👋",
-    "numbers": "🔢",
-    "colors": "🎨",
-    "family": "👨‍👩‍👧‍👦",
-    "food": "🍲",
-    "animals": "🦁",
-    "body parts": "🫱",
-    "days and time": "📅",
-    "emotions": "😊",
-    "market and shopping": "🛒",
-    "travel": "✈️",
-    "common verbs": "🏃",
-    "forming sentences": "📝",
-    "proverbs and culture": "🌍",
-}
-
-TOPIC_TITLES = {
-    "greetings": "Greetings",
-    "numbers": "Numbers 1-10",
-    "colors": "Colors",
-    "family": "Family Members",
-    "food": "Food & Drinks",
-    "animals": "Animals",
-    "body parts": "Body Parts",
-    "days and time": "Days & Time",
-    "emotions": "Emotions",
-    "market and shopping": "Market & Shopping",
-    "travel": "Travel Phrases",
-    "common verbs": "Common Verbs",
-    "forming sentences": "Forming Sentences",
-    "proverbs and culture": "Proverbs & Culture",
-}
-
-LEARNING_PATH = [
-    "greetings", "numbers", "colors", "family", "food",
-    "animals", "body parts", "days and time", "emotions",
-    "market and shopping", "travel", "common verbs",
-    "forming sentences", "proverbs and culture",
-]
-
-TOPIC_DURATIONS = {
-    "greetings": 5,
-    "numbers": 8,
-    "colors": 6,
-    "family": 7,
-    "food": 8,
-    "animals": 7,
-    "body parts": 6,
-    "days and time": 8,
-    "emotions": 5,
-    "market and shopping": 10,
-    "travel": 9,
-    "common verbs": 8,
-    "forming sentences": 10,
-    "proverbs and culture": 12,
-}
+# Learning path derived from the canonical topic order in lessons_service.
+# This ensures topic IDs here always match what gets stored in UserProgress.
+LEARNING_PATH = list(TOPICS_METADATA.keys())
 
 
 class HomeService:
@@ -82,12 +28,15 @@ class HomeService:
         daily_goal = DailyGoalResponse(
             completed=today_completed,
             target=self.DAILY_GOAL_TARGET,
-            percentage=(today_completed / self.DAILY_GOAL_TARGET) * 100,
+            percentage=min((today_completed / self.DAILY_GOAL_TARGET) * 100, 100),
         )
 
-        continue_learning = await self._get_continue_learning(user, db)
+        # One DB query shared by continue_learning and today_lessons
+        fully_completed = await self._get_fully_completed_topics(user, db)
+        continue_learning = self._build_continue_learning(user, fully_completed)
+        today_lessons = self._build_today_lessons(user, fully_completed)
+
         stats = await self._get_stats(user, db)
-        today_lessons = await self._get_today_lessons(user, db)
         leaderboard = await self._get_leaderboard(db, language=user.selected_language)
 
         return HomeDashboardResponse(
@@ -113,33 +62,66 @@ class HomeService:
         )
         return result.scalar() or 0
 
-    async def _get_continue_learning(self, user: User, db: AsyncSession) -> ContinueLessonResponse | None:
+    async def _get_fully_completed_topics(self, user: User, db: AsyncSession) -> set:
+        """Returns topics where every subtopic has a completed=True record."""
         result = await db.execute(
-            select(UserProgress.topic).where(
+            select(UserProgress.topic, func.count(UserProgress.id))
+            .where(
                 and_(
                     UserProgress.user_id == user.id,
                     UserProgress.language == user.selected_language,
                     UserProgress.completed == True,
                 )
             )
+            .group_by(UserProgress.topic)
         )
-        completed_topics = set(result.scalars().all())
+        completed_counts = {topic: count for topic, count in result.all()}
 
-        next_topic = next((topic for topic in LEARNING_PATH if topic not in completed_topics), None)
+        fully_completed = set()
+        for topic, count in completed_counts.items():
+            expected = len(TOPICS_METADATA.get(topic, {}).get("subtopics", []))
+            if expected > 0 and count >= expected:
+                fully_completed.add(topic)
+        return fully_completed
+
+    def _build_continue_learning(self, user: User, fully_completed: set) -> ContinueLessonResponse | None:
+        next_topic = next((t for t in LEARNING_PATH if t not in fully_completed), None)
         if not next_topic:
             return None
 
         current_index = LEARNING_PATH.index(next_topic)
         progress = (current_index / len(LEARNING_PATH)) * 100
+        topic_meta = TOPICS_METADATA.get(next_topic, {})
 
         return ContinueLessonResponse(
             topic=next_topic,
-            title=TOPIC_TITLES.get(next_topic, next_topic.title()),
+            title=topic_meta.get("title", next_topic.replace("_", " ").title()),
             language=user.selected_language.value if user.selected_language else "Igbo",
             level=user.level.value if user.level else "beginner",
             progress_percentage=min(progress, 100),
-            emoji=TOPIC_EMOJIS.get(next_topic, "📚"),
+            emoji=topic_meta.get("emoji", "📚"),
         )
+
+    def _build_today_lessons(self, user: User, fully_completed: set) -> List[TodayLessonResponse]:
+        today_lessons: List[TodayLessonResponse] = []
+        for topic in LEARNING_PATH:
+            if len(today_lessons) >= 3:
+                break
+            if topic in fully_completed:
+                continue
+
+            topic_meta = TOPICS_METADATA.get(topic, {})
+            today_lessons.append(
+                TodayLessonResponse(
+                    id=topic,
+                    emoji=topic_meta.get("emoji", "📚"),
+                    title=topic_meta.get("title", topic.replace("_", " ").title()),
+                    subtitle=f"{user.selected_language.value if user.selected_language else 'Igbo'} · {user.level.value if user.level else 'Beginner'}",
+                    duration_minutes=topic_meta.get("duration_minutes", 5),
+                    is_completed=False,
+                )
+            )
+        return today_lessons
 
     async def _get_stats(self, user: User, db: AsyncSession) -> StatCardResponse:
         completed_result = await db.execute(
@@ -168,36 +150,6 @@ class HomeService:
             quiz_accuracy=round(quiz_accuracy, 1),
             total_xp=user.total_xp,
         )
-
-    async def _get_today_lessons(self, user: User, db: AsyncSession) -> List[TodayLessonResponse]:
-        result = await db.execute(
-            select(UserProgress.topic).where(
-                and_(
-                    UserProgress.user_id == user.id,
-                    UserProgress.language == user.selected_language,
-                    UserProgress.completed == True,
-                )
-            )
-        )
-        completed_topics = set(result.scalars().all())
-
-        today_lessons: List[TodayLessonResponse] = []
-        for topic in LEARNING_PATH:
-            if topic in completed_topics or len(today_lessons) >= 3:
-                continue
-
-            today_lessons.append(
-                TodayLessonResponse(
-                    id=topic,
-                    emoji=TOPIC_EMOJIS.get(topic, "📚"),
-                    title=TOPIC_TITLES.get(topic, topic.title()),
-                    subtitle=f"{user.selected_language.value if user.selected_language else 'Igbo'} · {user.level.value if user.level else 'Beginner'}",
-                    duration_minutes=TOPIC_DURATIONS.get(topic, 5),
-                    is_completed=False,
-                )
-            )
-
-        return today_lessons
 
     async def _get_leaderboard(self, db: AsyncSession, language=None, limit: int = 5) -> List[LeaderboardEntryResponse]:
         query = select(User.full_name, User.total_xp).where(User.is_active == True)

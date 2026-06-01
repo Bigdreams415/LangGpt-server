@@ -44,9 +44,13 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_password: str = ""
     redis_db: int = 0
+    # Full Redis URL — takes precedence over individual fields (use rediss:// for Upstash TLS)
+    redis_full_url: str = ""
 
     @property
     def redis_url(self) -> str:
+        if self.redis_full_url:
+            return self.redis_full_url
         if self.redis_password:
             return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
@@ -66,6 +70,8 @@ class Settings(BaseSettings):
 
     # Firebase / FCM
     firebase_credentials_path: str = ""
+    # JSON content of the service-account file — used when the file isn't on disk (e.g., Render)
+    firebase_credentials_json: str = ""
     firebase_project_id: str = ""
     push_notifications_enabled: bool = True
     fcm_dry_run: bool = False

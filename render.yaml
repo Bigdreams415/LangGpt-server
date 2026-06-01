@@ -1,0 +1,82 @@
+services:
+  - type: web
+    name: kinspeak-api
+    env: python
+    region: frankfurt        # eu-central-1 — closest to Supabase eu-north-1
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+
+    envVars:
+      # ── App ────────────────────────────────────────────────────────────────
+      - key: APP_NAME
+        value: KinSpeak
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: API_PREFIX
+        value: /api/v1
+
+      # ── PostgreSQL (Supabase) ──────────────────────────────────────────────
+      - key: POSTGRES_HOST
+        value: aws-1-eu-north-1.pooler.supabase.com
+      - key: POSTGRES_PORT
+        value: "5432"
+      - key: POSTGRES_USER
+        value: postgres.plugnbhihmsobwtpnvxo
+      - key: POSTGRES_PASSWORD
+        sync: false          # Set in Render dashboard → your Supabase DB password
+      - key: POSTGRES_DB
+        value: postgres
+
+      # ── Redis (Upstash — TLS required) ───────────────────────────────────
+      # Value: rediss://default:<password>@generous-feline-112538.upstash.io:6379
+      # Note: use rediss:// (double-s) for TLS — Upstash requires it
+      - key: REDIS_FULL_URL
+        sync: false
+
+      # ── JWT ───────────────────────────────────────────────────────────────
+      - key: JWT_SECRET_KEY
+        generateValue: true  # Render generates a secure random value
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "30"
+
+      # ── Google OAuth ──────────────────────────────────────────────────────
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+
+      # ── Gemini AI ─────────────────────────────────────────────────────────
+      - key: GEMINI_API_KEY
+        sync: false
+
+      # ── Firebase / FCM ───────────────────────────────────────────────────
+      # Paste the entire contents of firebase-adminsdk.json as a single-line
+      # JSON string in the Render dashboard (the file is gitignored).
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        value: kinspeak-ai
+      - key: PUSH_NOTIFICATIONS_ENABLED
+        value: "true"
+      - key: FCM_DRY_RUN
+        value: "false"
+
+      # ── CORS ─────────────────────────────────────────────────────────────
+      # Update ALLOWED_ORIGINS after you know your frontend URL.
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "60"
+
+      # ── Static files ─────────────────────────────────────────────────────
+      # Update with your actual Render service URL after the first deploy.
+      - key: STATIC_BASE_URL
+        value: https://kinspeak-api.onrender.com/static/videos
