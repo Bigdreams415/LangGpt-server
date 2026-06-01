@@ -11,7 +11,7 @@ class SignupRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=100, examples=["Chukwuemeka Obi"])
     username: str = Field(..., min_length=3, max_length=50, examples=["chukwuemeka_99"])
     email: EmailStr = Field(..., examples=["chukwuemeka@email.com"])
-    password: str = Field(..., min_length=8, max_length=128)
+    password: str = Field(..., min_length=8, max_length=72)
     date_of_birth: Optional[str] = Field(None, examples=["15/08/1995"])
     country: Optional[str] = Field(None, max_length=100, examples=["Nigeria"])
     selected_language: Optional[str] = Field(None, examples=["Igbo"])

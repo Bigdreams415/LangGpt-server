@@ -1,6 +1,7 @@
 .env
 .env.local
 .env.*.local
+.keys.env
 
 # Python
 __pycache__/
@@ -33,3 +34,7 @@ alembic/versions/__pycache__/
 # Firebase service account credentials
 *firebase-adminsdk*.json
 *-firebase-adminsdk-*.json
+
+# garbage
+logs.txt/
+logs.txt

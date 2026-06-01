@@ -1,13 +1,17 @@
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config.settings import settings
 from app.core.database.database import init_db, close_db
 from app.core.database.redis import init_redis, close_redis
+
+logger = logging.getLogger(__name__)
 from app.routers import lessons, quiz, conversation, progress, auth, avatar, notifications, user_routes
 from app.routers.home import router as home
 from app.services.notification_service import notification_service
@@ -43,6 +47,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Something went wrong. Please try again later."},
+    )
 
 # Serve generated avatar videos as static files
 # Accessible at: /static/videos/<filename>.mp4

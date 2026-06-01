@@ -27,7 +27,6 @@ typing_extensions==4.15.0
 
 # ── Auth / security ───────────────────────────────────────────────────────────
 bcrypt==5.0.0
-passlib==1.7.4
 python-jose[cryptography]==3.5.0
 cryptography==46.0.5
 
