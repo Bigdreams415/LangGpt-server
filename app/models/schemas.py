@@ -172,6 +172,7 @@ class ProgressResponse(BaseModel):
     user_id: str
     language: str
     completed_units: List[str]
+    unlocked_units: List[str] = []      # Units the learner is allowed to open
     completed_subtopics: List[SubtopicProgress]
     current_unit: str
     current_subtopic: str

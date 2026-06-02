@@ -32,9 +32,9 @@ class HomeService:
         )
 
         # One DB query shared by continue_learning and today_lessons
-        fully_completed = await self._get_fully_completed_topics(user, db)
-        continue_learning = self._build_continue_learning(user, fully_completed)
-        today_lessons = self._build_today_lessons(user, fully_completed)
+        completed_topics = await self._get_completed_topics(user, db)
+        continue_learning = self._build_continue_learning(user, completed_topics)
+        today_lessons = self._build_today_lessons(user, completed_topics)
 
         stats = await self._get_stats(user, db)
         leaderboard = await self._get_leaderboard(db, language=user.selected_language)
@@ -62,10 +62,15 @@ class HomeService:
         )
         return result.scalar() or 0
 
-    async def _get_fully_completed_topics(self, user: User, db: AsyncSession) -> set:
-        """Returns topics where every subtopic has a completed=True record."""
+    async def _get_completed_topics(self, user: User, db: AsyncSession) -> set:
+        """Topics the learner has passed.
+
+        Progression is unit-by-unit: a unit counts as completed once it has any
+        passing (completed=True) progress record, so the home screen advances
+        the moment a learner passes a unit's quiz.
+        """
         result = await db.execute(
-            select(UserProgress.topic, func.count(UserProgress.id))
+            select(UserProgress.topic)
             .where(
                 and_(
                     UserProgress.user_id == user.id,
@@ -75,14 +80,7 @@ class HomeService:
             )
             .group_by(UserProgress.topic)
         )
-        completed_counts = {topic: count for topic, count in result.all()}
-
-        fully_completed = set()
-        for topic, count in completed_counts.items():
-            expected = len(TOPICS_METADATA.get(topic, {}).get("subtopics", []))
-            if expected > 0 and count >= expected:
-                fully_completed.add(topic)
-        return fully_completed
+        return {row[0] for row in result.all()}
 
     def _build_continue_learning(self, user: User, fully_completed: set) -> ContinueLessonResponse | None:
         next_topic = next((t for t in LEARNING_PATH if t not in fully_completed), None)

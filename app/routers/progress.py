@@ -25,6 +25,10 @@ router = APIRouter()
 LEARNING_PATH = [unit.value for unit in LessonUnit]
 TOTAL_SUBTOPICS = sum(len(meta["subtopics"]) for meta in TOPICS_METADATA.values())
 
+# A quiz counts as "passed" (and the unit as completed) at this score or above.
+# This matches the threshold the Flutter client uses to show the pass dialog.
+PASS_THRESHOLD = 80
+
 
 def _parse_topic_key(topic_key: str) -> tuple[str, int | None]:
     """Parse stored topic key format: '<unit>:<subtopic_index>' or legacy '<unit>'."""
@@ -38,22 +42,40 @@ def _parse_topic_key(topic_key: str) -> tuple[str, int | None]:
         return unit, None
 
 
-def _build_next_recommendation(
-    completed_pairs: set[tuple[str, int]],
-) -> tuple[str, str]:
-    """Return next (unit, subtopic_name) based on first incomplete subtopic."""
-    for unit in LEARNING_PATH:
-        unit_meta = TOPICS_METADATA.get(unit)
-        if not unit_meta:
-            continue
+def _first_subtopic_name(unit: str) -> str:
+    """Name of a unit's first subtopic, or empty string if the unit is unknown."""
+    subtopics = TOPICS_METADATA.get(unit, {}).get("subtopics", [])
+    return subtopics[0]["name"] if subtopics else ""
 
-        for idx, subtopic in enumerate(unit_meta["subtopics"]):
-            if (unit, idx) not in completed_pairs:
-                return unit, subtopic["name"]
+
+def _build_next_unit_recommendation(
+    completed_units_set: set[str],
+) -> tuple[str, str]:
+    """Return the next (unit, first_subtopic_name) the learner should open.
+
+    Progression is unit-by-unit: passing a unit's quiz completes that unit and
+    points the learner at the next not-yet-completed unit.
+    """
+    for unit in LEARNING_PATH:
+        if unit not in completed_units_set:
+            return unit, _first_subtopic_name(unit)
 
     last_unit = LEARNING_PATH[-1]
-    last_subtopic = TOPICS_METADATA[last_unit]["subtopics"][-1]["name"]
-    return last_unit, last_subtopic
+    return last_unit, _first_subtopic_name(last_unit)
+
+
+def _build_unlocked_units(completed_units_set: set[str]) -> list[str]:
+    """Units the learner may open: every completed unit plus the next one.
+
+    Walks the learning path in order and stops right after the first unit that
+    is not completed, so units stay locked until the previous one is passed.
+    """
+    unlocked: list[str] = []
+    for unit in LEARNING_PATH:
+        unlocked.append(unit)
+        if unit not in completed_units_set:
+            break
+    return unlocked
 
 
 @router.post("/update", response_model=ProgressResponse)
@@ -89,12 +111,19 @@ async def update_progress(
     )
 
     now = datetime.now(timezone.utc)
+    # Only a passing score completes the lesson. A failed attempt is still
+    # recorded (best score kept, attempts incremented) but never unlocks the
+    # next unit. Once a unit is completed it stays completed.
+    passed = request.score >= PASS_THRESHOLD
+
     if existing:
-        existing.score = request.score
+        existing.score = max(existing.score or 0, request.score)
         existing.level = request.level.value
-        existing.completed = True
-        existing.completed_at = now
         existing.attempts = (existing.attempts or 0) + 1
+        existing.subtopic_name = request.subtopic_name
+        if passed:
+            existing.completed = True
+            existing.completed_at = now
     else:
         db.add(
             UserProgress(
@@ -105,19 +134,20 @@ async def update_progress(
                 subtopic_name=request.subtopic_name,
                 level=request.level.value,
                 score=request.score,
-                completed=True,
+                completed=passed,
                 attempts=1,
-                completed_at=now,
+                completed_at=now if passed else None,
             )
         )
 
     if unit_progress:
         unit_progress.level = request.level.value
-        unit_progress.completed = True
-        unit_progress.completed_at = now
         unit_progress.attempts = (unit_progress.attempts or 0) + 1
         if unit_progress.score < request.score:
             unit_progress.score = request.score
+        if passed:
+            unit_progress.completed = True
+            unit_progress.completed_at = now
     else:
         db.add(
             UserProgress(
@@ -126,14 +156,11 @@ async def update_progress(
                 topic=unit_val,
                 level=request.level.value,
                 score=request.score,
-                completed=True,
+                completed=passed,
                 attempts=1,
-                completed_at=now,
+                completed_at=now if passed else None,
             )
         )
-
-    if existing:
-        existing.subtopic_name = request.subtopic_name
 
     await db.flush()
 
@@ -152,7 +179,6 @@ async def update_progress(
 
     completed_subtopics: list[SubtopicProgress] = []
     completed_units_set: set[str] = set()
-    completed_pairs: set[tuple[str, int]] = set()
     total_score = 0
 
     for row in rows:
@@ -167,9 +193,10 @@ async def update_progress(
         if not subtopics or parsed_index < 0 or parsed_index >= len(subtopics):
             continue
 
-        completed_units_set.add(unit)
-        completed_pairs.add((unit, parsed_index))
-        total_score += row.score
+        # Only passing rows complete a unit and count toward unlocking.
+        if row.completed:
+            completed_units_set.add(unit)
+            total_score += row.score
 
         completed_subtopics.append(
             SubtopicProgress(
@@ -182,9 +209,10 @@ async def update_progress(
         )
 
     completed_units = [unit for unit in LEARNING_PATH if unit in completed_units_set]
-    next_unit, next_subtopic = _build_next_recommendation(completed_pairs)
+    unlocked_units = _build_unlocked_units(completed_units_set)
+    next_unit, next_subtopic = _build_next_unit_recommendation(completed_units_set)
     overall_progress_percent = (
-        (len(completed_pairs) / TOTAL_SUBTOPICS) * 100 if TOTAL_SUBTOPICS else 0.0
+        (len(completed_units) / len(LEARNING_PATH)) * 100 if LEARNING_PATH else 0.0
     )
 
     # Update streak and XP on the user record
@@ -208,9 +236,10 @@ async def update_progress(
         user_id=str(current_user.id),
         language=request.language.value,
         completed_units=completed_units,
+        unlocked_units=unlocked_units,
         completed_subtopics=completed_subtopics,
-        current_unit=unit_val,
-        current_subtopic=request.subtopic_name,
+        current_unit=next_unit,
+        current_subtopic=next_subtopic,
         current_level=request.level.value,
         total_score=total_score,
         next_recommended_unit=next_unit,
@@ -258,11 +287,12 @@ async def get_progress(
     ).all()
 
     if not rows:
-        next_unit, next_subtopic = _build_next_recommendation(set())
+        next_unit, next_subtopic = _build_next_unit_recommendation(set())
         return ProgressResponse(
             user_id=user_id,
             language=language_value,
             completed_units=[],
+            unlocked_units=_build_unlocked_units(set()),
             completed_subtopics=[],
             current_unit=next_unit,
             current_subtopic=next_subtopic,
@@ -275,7 +305,6 @@ async def get_progress(
 
     completed_subtopics: list[SubtopicProgress] = []
     completed_units_set: set[str] = set()
-    completed_pairs: set[tuple[str, int]] = set()
     total_score = 0
 
     for row in rows:
@@ -290,9 +319,10 @@ async def get_progress(
         if not subtopics or parsed_index < 0 or parsed_index >= len(subtopics):
             continue
 
-        completed_units_set.add(unit)
-        completed_pairs.add((unit, parsed_index))
-        total_score += row.score
+        # Only passing rows complete a unit and count toward unlocking.
+        if row.completed:
+            completed_units_set.add(unit)
+            total_score += row.score
 
         completed_subtopics.append(
             SubtopicProgress(
@@ -305,20 +335,21 @@ async def get_progress(
         )
 
     completed_units = [unit for unit in LEARNING_PATH if unit in completed_units_set]
-    current_subtopic = completed_subtopics[-1] if completed_subtopics else None
+    unlocked_units = _build_unlocked_units(completed_units_set)
     current_level = rows[-1].level.value if hasattr(rows[-1].level, "value") else str(rows[-1].level)
-    next_unit, next_subtopic = _build_next_recommendation(completed_pairs)
+    next_unit, next_subtopic = _build_next_unit_recommendation(completed_units_set)
     overall_progress_percent = (
-        (len(completed_pairs) / TOTAL_SUBTOPICS) * 100 if TOTAL_SUBTOPICS else 0.0
+        (len(completed_units) / len(LEARNING_PATH)) * 100 if LEARNING_PATH else 0.0
     )
 
     return ProgressResponse(
         user_id=user_id,
         language=language_value,
         completed_units=completed_units,
+        unlocked_units=unlocked_units,
         completed_subtopics=completed_subtopics,
-        current_unit=current_subtopic.unit if current_subtopic else next_unit,
-        current_subtopic=current_subtopic.subtopic_name if current_subtopic else next_subtopic,
+        current_unit=next_unit,
+        current_subtopic=next_subtopic,
         current_level=current_level,
         total_score=total_score,
         next_recommended_unit=next_unit,
