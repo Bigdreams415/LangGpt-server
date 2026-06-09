@@ -3,7 +3,7 @@ from app.models.schemas import (
     QuizRequest, QuizResponse,
     CheckAnswerRequest, CheckAnswerResponse
 )
-from app.services.gemini import generate
+from app.services.gemini import generate, GeminiUnavailableError
 from app.prompts.templates import quiz_prompt, check_answer_prompt
 from app.services.lessons_service import lessons_service
 
@@ -61,8 +61,19 @@ async def generate_quiz(request: QuizRequest):
         )
         data = await generate(prompt, expect_json=True)
         return QuizResponse(**data)
+    except GeminiUnavailableError:
+        raise HTTPException(
+            status_code=503,
+            detail="The quiz service is busy right now. Please try again in a moment.",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Quiz generation failed: {str(e)}")
+        print(f"[quiz] Unexpected error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Something went wrong generating your quiz. Please try again.",
+        )
 
 
 @router.post("/check", response_model=CheckAnswerResponse)
@@ -77,5 +88,16 @@ async def check_answer(request: CheckAnswerRequest):
         )
         data = await generate(prompt, expect_json=True)
         return CheckAnswerResponse(**data)
+    except GeminiUnavailableError:
+        raise HTTPException(
+            status_code=503,
+            detail="The answer checking service is busy right now. Please try again in a moment.",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Answer checking failed: {str(e)}")
+        print(f"[quiz/check] Unexpected error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Something went wrong checking your answer. Please try again.",
+        )

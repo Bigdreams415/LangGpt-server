@@ -254,6 +254,7 @@ async def update_progress(
 async def get_progress(
     user_id: str,
     language: str,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a user's progress for a specific language."""
@@ -261,6 +262,9 @@ async def get_progress(
         user_uuid = UUID(user_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid user_id format") from exc
+
+    if str(current_user.id) != str(user_uuid):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     normalized_language = language.strip().lower()
     language_map = {

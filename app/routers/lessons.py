@@ -1,11 +1,13 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 
 from app.models.schemas import LessonRequest, LessonResponse, TranslationRequest, TranslationResponse, LessonUnit
-from app.services.gemini import generate
+from app.models.user_model import User
+from app.services.gemini import generate, GeminiUnavailableError
 from app.prompts.templates import lesson_prompt, translation_prompt
 from app.schemas.lessons_schemas import LessonsListResponse, LessonDetailResponse
 from app.services.lessons_service import lessons_service
+from password.common.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -34,7 +36,10 @@ def _resolve_subtopic_name(
 
 
 @router.post("/", response_model=LessonResponse)
-async def get_lesson(request: LessonRequest):
+async def get_lesson(
+    request: LessonRequest,
+    current_user: User = Depends(get_current_user),
+):
     """Generate a vocabulary and culture lesson for a given unit and subtopic."""
     try:
         language = request.language.value
@@ -66,19 +71,44 @@ async def get_lesson(request: LessonRequest):
         )
         data = await generate(prompt, expect_json=True)
         return LessonResponse(**data)
+    except GeminiUnavailableError:
+        raise HTTPException(
+            status_code=503,
+            detail="The lesson service is busy right now. Please try again in a moment.",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Lesson generation failed: {str(e)}")
+        print(f"[lessons] Unexpected error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Something went wrong generating your lesson. Please try again.",
+        )
 
 
 @router.post("/translate", response_model=TranslationResponse)
-async def translate(request: TranslationRequest):
+async def translate(
+    request: TranslationRequest,
+    current_user: User = Depends(get_current_user),
+):
     """Translate text to or from any of the supported languages."""
     try:
         prompt = translation_prompt(request.text, request.from_language, request.to_language.value)
         data = await generate(prompt, expect_json=True)
         return TranslationResponse(**data)
+    except GeminiUnavailableError:
+        raise HTTPException(
+            status_code=503,
+            detail="The translation service is busy right now. Please try again in a moment.",
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
+        print(f"[lessons/translate] Unexpected error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Something went wrong with the translation. Please try again.",
+        )
 
 
 @router.get("/units")
@@ -105,6 +135,7 @@ async def list_lessons(
     level: Optional[str] = Query(None, description="Filter by level: beginner, intermediate, advanced"),
     limit: int = Query(20, ge=1, le=100, description="Number of units to return"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
+    current_user: User = Depends(get_current_user),
 ):
     """Get a paginated list of all available lessons for a language."""
     return lessons_service.get_lessons_list(
@@ -116,6 +147,10 @@ async def list_lessons(
 
 
 @router.get("/unit/{language}/{unit_id}", response_model=LessonDetailResponse)
-async def get_unit_by_id(language: str, unit_id: str):
+async def get_unit_by_id(
+    language: str,
+    unit_id: str,
+    current_user: User = Depends(get_current_user),
+):
     """Get detailed lesson content for a specific unit."""
     return lessons_service.get_lesson_detail(language, unit_id)

@@ -43,9 +43,9 @@ services:
       - key: JWT_ALGORITHM
         value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
-        value: "30"
+        value: "525600"           # 1 year — Duolingo-style long-lived sessions
       - key: REFRESH_TOKEN_EXPIRE_DAYS
-        value: "30"
+        value: "365"
 
       # ── Google OAuth ──────────────────────────────────────────────────────
       - key: GOOGLE_CLIENT_ID
